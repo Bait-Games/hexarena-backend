@@ -20,6 +20,7 @@ std::map<BODYPART_TYPE, int> BODYPART_COST = {{CELL, 20},
 #define INFLATE_RATE 2
 #define REGEN_RATE 1
 #define SPIKE_DMG 3
+#define BANANA true
 
 enum ACTION {
     MOVE,
