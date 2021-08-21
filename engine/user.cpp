@@ -4,6 +4,13 @@
 
 #include "user.h"
 
+/**
+ * Creates a new User.
+ * @param id The id of the new user.
+ * @param x The x coordinate of the new user's position.
+ * @param y The y coordinate of the new user's position.
+ * @param drop A function which drops the given amount of resources at the given point.
+ */
 User::User(int id, double x, double y, std::function<void(int, double, double)> drop) {
     this->id = id;
     this->x = x;
@@ -26,11 +33,17 @@ User::User(int id, double x, double y, std::function<void(int, double, double)> 
     this->drop = std::move(drop);
 }
 
+/**
+ * Resets any properties that are only meaningful in a single tick interval.
+ */
 void User::tick_reset() {
     moved = false;
     rotated = false;
 }
 
+/**
+ * Processes all the changes that ought to occur to bodyparts every tick.
+ */
 void User::tick_parts() const {
     for (Component* it = this->components; it < this->components + this->components_size; it++) {
         switch(it->type) {
@@ -51,10 +64,24 @@ void User::tick_parts() const {
     }
 }
 
-
+/**
+ * Returns the distance between the roots of two users.
+ * @param a One of the users to measure the distance between.
+ * @param b The other of the users to measure the distance between.
+ * @return The distance between the given users.
+ */
 double distance(User &a, User &b) {
     return distance(a.x, a.y, b.x, b.y);
 }
+/**
+ * Given a base position and a bodypart coordinate, returns the position of the bodypart.
+ * @param x The x coordinate of the user in question.
+ * @param y The y coordinate of the user in question.
+ * @param up The up coordinate of the bodypart in question.
+ * @param fwd The forward coordinate of the bodypart in question.
+ * @param bwd The backward coordinate of the bodypart in question.
+ * @return The x and y coordinates of the bodypart in question.
+ */
 std::pair<double, double> rel_pos(double x, double y, int up, int fwd, int bwd) {
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "UnusedValue"
@@ -296,6 +323,11 @@ bool User::shrink(int part) {
     return false;
 }
 
+/**
+ * Given a root bodypart and a set of bodyparts, adds all bodyparts connected to the root to the given set.
+ * @param node The root from which to search.
+ * @param set The set to which to add found bodyparts.
+ */
 void User::find_connected(int node, std::set<int> &set) {
     if (set.contains(node)) return;
     set.insert(node);
@@ -308,9 +340,9 @@ void User::find_connected(int node, std::set<int> &set) {
 
 /**
  * Given the id (index in array) of a component of this user, returns its current hitbox.
- * @param component The id of the component. Index into this->components. Must be CELL or SPIKE
+ * @param component The id of the component. Index into this->components. Must be CELL or SPIKE.
  * @return a tuple (x, y, size) where x and y are the coordinates of the center of the hitbox and size is its radius.
- *         All hitboxes are circular
+ *         All hitboxes are circular.
  */
 std::tuple<double, double, int> User::get_hitbox(int component) const {
     double pos_x, pos_y;
@@ -393,6 +425,14 @@ std::tuple<double, double, int> User::get_hitbox(int component) const {
     return {pos_x, pos_y, size};
 }
 
+/**
+ * Given a component, another user and a component on the other user, computes the normalised vector pointing from
+ * the given bodypart on this user to the given bodypart on the other user.
+ * @param component The component at the root of the vector.
+ * @param to The user containing the component to point to.
+ * @param component2 The component towards which the vector points.
+ * @return The vector in question.
+ */
 std::pair<double, double> User::get_direction_normalised(int component, User &to, int component2) const {
     auto [pos_x, pos_y, _] = this->get_hitbox(component);
     auto [pos2_x, pos2_y, size2] = to.get_hitbox(component2);
@@ -401,6 +441,11 @@ std::pair<double, double> User::get_direction_normalised(int component, User &to
     return {vec_x / vec_magnitude, vec_y / vec_magnitude};
 }
 
+/**
+ * Processes a possible collision between this user and the given user.
+ * @param user The user to collide with.
+ * @return True iff a collision has occurred.
+ */
 bool User::collide_with_user(User& user) {
     if (distance(*this, user) > this->size + user.size) return false;
 
@@ -518,12 +563,15 @@ bool User::collide_with_user(User& user) {
     }, false);
 }
 
+/**
+ * Adds momentum to this user as appropriate for a collision with the given user and component.
+ * @param bouncer The user contianing the BOUNCE component that bounced back this user.
+ * @param bounce_component The component which bounced back this user.
+ * @param popped Whether the collision resulted in the popping of the given BOUNCE component.
+ */
 void User::bounce_back(User &bouncer, int bounce_component, bool popped) {
-    // we have an off-by-one error here on purpose.
-    // one of the faces _has_ to contain the bounce. If it gets to the 7th face and throws
-    // an exception due to the illegal array access something has already gone wrong
     int face = 0;
-    for (; face <= 7; face++) {
+    for (; face <= 6; face++) {
         if (bouncer.components[bouncer.components[bounce_component].body].faces[face] == bounce_component) break;
     }
     double x_magn = std::cos(FACE_TO_ANGLE[face]), y_magn = std::sin(FACE_TO_ANGLE[face]);
@@ -533,6 +581,12 @@ void User::bounce_back(User &bouncer, int bounce_component, bool popped) {
     bouncer.momentum_y += BOUNCE_MOMENTUM_SELF * (popped ? BOUNCE_POPPED_MULTIPLIER : 1) * -y_magn;
 }
 
+/**
+ * Transfers momentum from this user to the given user as appropriate for a collision between the given components.
+ * @param component The component of this user involved in the collision.
+ * @param user The user with which the collision occurred.
+ * @param other_component The component of the other user involved in the collision.
+ */
 void User::transfer_momentum(int component, User &user, int other_component) {
     auto [pos_x, pos_y, _] = get_hitbox(component);
     auto [pos2_x, pos2_y, size2] = user.get_hitbox(other_component);
@@ -554,8 +608,15 @@ void User::transfer_momentum(int component, User &user, int other_component) {
     }
 }
 
+/**
+ * Retrieves the layered component (shield or bounce) attached to the given component in the direction of the given point.
+ * @param component The component whose layers are desired.
+ * @param to_x The x coordinate of the direction in question.
+ * @param to_y The y coordinate of the direction in question.
+ * @return -1 if no such component exists, the id of the component in question otherwise.
+ */
 int User::get_layered_part(int component, double to_x, double to_y) const {
-    if (this->components[component].type != CELL) return NONE;
+    if (this->components[component].type != CELL) return -1;
     auto [pos_x, pos_y, _] = this->get_hitbox(component);
 
     double vec_x = to_x - pos_x, vec_y = to_y - pos_y;
@@ -571,6 +632,11 @@ int User::get_layered_part(int component, double to_x, double to_y) const {
     return this->components[component].faces[offset];
 }
 
+/**
+ * Processes a possible collision between this user and the given resource.
+ * @param res The resource to collide with.
+ * @return True iff a collision has occurred.
+ */
 bool User::collide_with_resource(Resource &res) {
     if (res.amt <= 0) return false;
     double resource_size = std::min((double) RESOURCE_SIZE_MAX, RESOURCE_SIZE_MIN + res.amt * RESOURCE_SIZE_STEP);
@@ -601,6 +667,9 @@ double User::get_size() const {
     return size;
 }
 
+/**
+ * Computes an approximation of the size of this user and caches it for retrieval by get_size()
+ */
 void User::compute_size() {
     this->size = this->foreach_component<double>([this](Component &c, double dist) -> double {
         if (c.type != CELL) return dist;
@@ -611,16 +680,19 @@ void User::compute_size() {
         }, 0.);
 }
 
+/// Performs a reduction from the left on all components
 template<typename T> T User::foreach_component(const std::function<T(Component&, T)>& f, T init) {
     return this->foreach_component<T>([&](Component&c, int i, T a) {
         return f(c, a);
     }, init);
 }
+/// Performs a reduction from the left on all components
 void User::foreach_component(const std::function<void(Component&)>& f) const{
     this->foreach_component([&](Component &c, int) {
         f(c);
     });
 }
+/// Performs a reduction from the left on all components
 template<typename T> T User::foreach_component(const std::function<T(Component&, int, T)>& f, T init) {
     T acc = init;
     for (int i = 0; i < this->next_component; i++) {
@@ -628,6 +700,7 @@ template<typename T> T User::foreach_component(const std::function<T(Component&,
     }
     return acc;
 }
+/// Performs a reduction from the left on all components
 void User::foreach_component(const std::function<void(Component&, int)>& f) const{
     for (int i = 0; i < this->next_component; i++) {
         f(this->components[i], i);
